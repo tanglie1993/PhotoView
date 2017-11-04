@@ -60,17 +60,22 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
     private Interpolator mInterpolator = new AccelerateDecelerateInterpolator();
     int ZOOM_DURATION = DEFAULT_ZOOM_DURATION;
 
+    // 用于标志哪一面进入overscroll状态。
+    // 在判断parent.requestDisallowInterceptTouchEvent时有用，如果overscroll的话就不用disallow了
+
     static final int EDGE_NONE = -1;
     static final int EDGE_LEFT = 0;
     static final int EDGE_RIGHT = 1;
     static final int EDGE_BOTH = 2;
 
+    // 如果down或者up的时候有不止一根手指则不执行fling
     static int SINGLE_TOUCH = 1;
 
     private float mMinScale = DEFAULT_MIN_SCALE;
     private float mMidScale = DEFAULT_MID_SCALE;
     private float mMaxScale = DEFAULT_MAX_SCALE;
 
+    // overscroll时是否允许
     private boolean mAllowParentInterceptOnEdge = true;
     private boolean mBlockParentIntercept = false;
 
@@ -132,11 +137,11 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
     private uk.co.senab.photoview.gestures.GestureDetector mScaleDragDetector;
 
     // These are set so we don't keep allocating them on the heap
-    private final Matrix mBaseMatrix = new Matrix();
-    private final Matrix mDrawMatrix = new Matrix();
-    private final Matrix mSuppMatrix = new Matrix();
+    private final Matrix mBaseMatrix = new Matrix(); // 负责把图片缩放好并放到合适的原始位置
+    private final Matrix mDrawMatrix = new Matrix(); // 只在getDrawMatrix里面会用一下，避免每次重新生成对象
+    private final Matrix mSuppMatrix = new Matrix(); // rotation，scale，drag等操作
     private final RectF mDisplayRect = new RectF();
-    private final float[] mMatrixValues = new float[9];
+    private final float[] mMatrixValues = new float[9]; // 只在计算缩放比例的时候会用一下
 
     // Listeners
     private OnMatrixChangedListener mMatrixChangeListener;
@@ -149,9 +154,20 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
     private int mIvTop, mIvRight, mIvBottom, mIvLeft;
     private FlingRunnable mCurrentFlingRunnable;
     private int mScrollEdge = EDGE_BOTH;
-    private float mBaseRotation;
+    private float mBaseRotation; // 旋转角度
 
     private boolean mZoomEnabled;
+
+//    ImageView.ScaleType.CENTER 以原图的几何中心点和ImageView的几何中心点为基准,按图片的原来size居中显示，不缩放当图片长/宽超过View的长/宽，则截取图片的居中部分显示ImageView的size.当图片小于View 的长宽时，只显示图片的size,不剪裁。
+//    ImageView.ScaleType.CENTER_CROP 以原图的几何中心点和ImageView的几何中心点为基准,按比例扩大(图片小于View的宽时)图片的size居中显示，使得图片长 (宽)等于或大于View的长(宽),并按View的大小截取图片。当原图的size大于ImageView时，按比例缩小图片，使得长宽中有一向等于ImageView,另一向大于ImageView。实际上，使得原图的size大于等于ImageView
+//    ImageView.ScaleType.CENTER_INSIDE 以原图的几何中心点和ImageView的几何中心点为基准，将图片的内容完整居中显示，通过按比例缩小原来的size使得图片长(宽)等于或小于ImageView的长(宽)
+//
+//    ImageView.ScaleType.FIT_CENTER 把图片按比例扩大(缩小)到View的宽度，居中显示
+//    ImageView.ScaleType.FIT_END 把图片按比例扩大(缩小)到View的宽度，显示在View的下部分位置
+//    ImageView.ScaleType.FIT_START 把图片按比例扩大(缩小)到View的宽度，显示在View的上部分位置
+//    ImageView.ScaleType.FIT_XY 把图片按照指定的大小在View中显示，拉伸显示图片，不保持原比例，填满View.
+//
+//    ImageView.ScaleType.MATRIX 用matrix来绘制
     private ScaleType mScaleType = ScaleType.FIT_CENTER;
 
     public PhotoViewAttacher(ImageView imageView) {
@@ -165,6 +181,11 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         imageView.setOnTouchListener(this);
 
         ViewTreeObserver observer = imageView.getViewTreeObserver();
+
+        // update base matrix
+        // Register a callback to be invoked when the global layout state or the visibility of views
+        // within the view tree changes
+        // 一个view的有效requestLayout，会导致触发onGlobalLayout
         if (null != observer)
             observer.addOnGlobalLayoutListener(this);
 
@@ -196,6 +217,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
                             if (getScale() > DEFAULT_MIN_SCALE) {
                                 return false;
                             }
+                            // 如果down或者up的时候有不止一根手指则不执行fling
 
                             if (MotionEventCompat.getPointerCount(e1) > SINGLE_TOUCH
                                     || MotionEventCompat.getPointerCount(e2) > SINGLE_TOUCH) {
@@ -245,6 +267,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
      * from {@link android.app.Activity#onDestroy()}. This is automatically called if you are using
      * {@link uk.co.senab.photoview.PhotoView}.
      */
+    // 回收资源
     @SuppressWarnings("deprecation")
     public void cleanup() {
         if (null == mImageView) {
@@ -286,6 +309,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         return getDisplayRect(getDrawMatrix());
     }
 
+    // 设置mSuppMatrix
     @Override
     public boolean setDisplayMatrix(Matrix finalMatrix) {
         if (finalMatrix == null) {
@@ -516,6 +540,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
             }
 
             // Try the Scale/Drag detector
+            // 主要用于overscroll时的情况
             if (null != mScaleDragDetector) {
                 boolean wasScaling = mScaleDragDetector.isScaling();
                 boolean wasDragging = mScaleDragDetector.isDragging();
@@ -525,6 +550,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
                 boolean didntScale = !wasScaling && !mScaleDragDetector.isScaling();
                 boolean didntDrag = !wasDragging && !mScaleDragDetector.isDragging();
 
+                // 在mBlockParentIntercept为false而且overscroll的时候 parent.requestDisallowInterceptTouchEvent(false)
                 mBlockParentIntercept = didntScale && didntDrag;
             }
 
@@ -665,6 +691,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         update();
     }
 
+    //主要用于设置新图片、旋转、缩放之后的刷新
     public void update() {
         ImageView imageView = getImageView();
 
@@ -739,6 +766,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         }
     }
 
+    // 检查有没有超出边界
     private boolean checkMatrixBounds() {
         final ImageView imageView = getImageView();
         if (null == imageView) {
@@ -827,6 +855,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         return imageView == null ? null : imageView.getDrawingCache();
     }
 
+    // 设置AnimatedZoomRunnable的时长
     @Override
     public void setZoomTransitionDuration(int milliseconds) {
         if (milliseconds < 0)
@@ -1058,6 +1087,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY);
     }
 
+    // 主要用于双击后的缩放
     private class AnimatedZoomRunnable implements Runnable {
 
         private final float mFocalX, mFocalY;
@@ -1100,6 +1130,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         }
     }
 
+    // ACTION_UP之后才会执行一次onfling
     private class FlingRunnable implements Runnable {
 
         private final ScrollerProxy mScroller;
