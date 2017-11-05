@@ -72,7 +72,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
     static int SINGLE_TOUCH = 1;
 
     private float mMinScale = DEFAULT_MIN_SCALE;
-    private float mMidScale = DEFAULT_MID_SCALE;
+    private float mMidScale = DEFAULT_MID_SCALE; // 主要是doubletap的时候要用
     private float mMaxScale = DEFAULT_MAX_SCALE;
 
     // overscroll时是否允许
