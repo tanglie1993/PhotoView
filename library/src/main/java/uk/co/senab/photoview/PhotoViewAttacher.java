@@ -1147,6 +1147,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
             mScroller.forceFinished(true);
         }
 
+        // 先判断能不能滑动再去执行
         public void fling(int viewWidth, int viewHeight, int velocityX,
                           int velocityY) {
             final RectF rect = getDisplayRect();
